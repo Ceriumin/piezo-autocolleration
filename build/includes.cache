@@ -1,0 +1,17 @@
+[
+  {
+    "Sourcefile": null,
+    "Include": "",
+    "Includepath": "/Users/baryla/Library/Arduino15/packages/esp32/hardware/esp32/3.2.0/cores/esp32"
+  },
+  {
+    "Sourcefile": null,
+    "Include": "",
+    "Includepath": "/Users/baryla/Library/Arduino15/packages/esp32/hardware/esp32/3.2.0/variants/esp32"
+  },
+  {
+    "Sourcefile": "/Users/baryla/Developer/Projects/Calder-Firmware/build/sketch/Calder-Firmware.ino.cpp",
+    "Include": "",
+    "Includepath": null
+  }
+]
