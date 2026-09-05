@@ -7,80 +7,46 @@ int bufferIndex = 0;
 unsigned long lastSampleMicros = 0;
 
 float yinBuffer[BUFFER_SIZE / 2];
-const float threshold = 0.35f; // tightened from 0.25f
+const float threshold = 0.35f;
 
-// Simple 1st-order HPF to reduce tap/bang low-frequency thumps
-const float HPF_CUTOFF = 40.0f; // Hz (tune 40–120)
-float hpAlpha = 0.0f, hpYPrev = 0.0f, hpXPrev = 0.0f;
-
-// Transient gating
-float prevRms = 0.0f;
-const float crestThreshold = 12.0f;     // peak/RMS
-const float rmsJumpRatio = 3.0f;        // sudden energy jump factor
-const unsigned long refractoryMs = 150; // mute window after a bang
-unsigned long transientRefractoryUntil = 0;
+// Only report pitch when the signal is loud enough
+const float rmsThreshold = 10.0f;
+const float minFreq = 70.0f, maxFreq = 1200.0f; // plausible guitar range
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
   pinMode(ADC_PIN, INPUT);
-
-  // Init HPF coefficient
-  float dt = 1.0f / SAMPLE_RATE;
-  float rc = 1.0f / (2.0f * 3.14159265f * HPF_CUTOFF);
-  hpAlpha = rc / (rc + dt);
 }
 
 void loop() {
-  if (micros() - lastSampleMicros >= 1000000UL / SAMPLE_RATE) {
-    lastSampleMicros = micros();
+  // Sample the piezo at a fixed rate
+  if (micros() - lastSampleMicros < 1000000UL / SAMPLE_RATE) return;
+  lastSampleMicros = micros();
 
-    int adcValue = analogRead(ADC_PIN);
-    // Apply HPF directly on raw ADC (no separate DC offset tracking)
-    float x = (float)adcValue;
-    float y = hpAlpha * (hpYPrev + x - hpXPrev);
-    hpYPrev = y;
-    hpXPrev = x;
+  audioBuffer[bufferIndex++] = (float)analogRead(ADC_PIN);
+  if (bufferIndex < BUFFER_SIZE) return;
+  bufferIndex = 0;
 
-    audioBuffer[bufferIndex++] = y;
+  // Compute signal level (remove DC offset so silence reads as ~0)
+  float mean = 0.0f;
+  for (int i = 0; i < BUFFER_SIZE; i++) mean += audioBuffer[i];
+  mean /= BUFFER_SIZE;
 
-    if (bufferIndex >= BUFFER_SIZE) {
-      float sumSq = 0.0f;
-      float maxAbs = 0.0f;
-      for (int i = 0; i < BUFFER_SIZE; i++) {
-        float v = audioBuffer[i];
-        sumSq += v * v;
-        float av = fabsf(v);
-        if (av > maxAbs) maxAbs = av;
-      }
-      float rms = sqrtf(sumSq / BUFFER_SIZE);
-      float crest = (rms > 1e-6f) ? (maxAbs / (rms + 1e-6f)) : 0.0f;
+  float sumSq = 0.0f;
+  for (int i = 0; i < BUFFER_SIZE; i++) {
+    audioBuffer[i] -= mean;
+    sumSq += audioBuffer[i] * audioBuffer[i];
+  }
+  float rms = sqrtf(sumSq / BUFFER_SIZE);
 
-      // Transient detection and refractory gating
-      bool transient = (crest > crestThreshold) || (prevRms > 0.0f && (rms / (prevRms + 1e-6f) > rmsJumpRatio));
-      if (transient) {
-        transientRefractoryUntil = millis() + refractoryMs;
-      }
+  if (rms < rmsThreshold) return;
 
-      const float playThreshold = 10.0f;
-      const float minFreq = 70.0f, maxFreq = 1200.0f; // plausible guitar range
-
-      float freq = 0.0f;
-      bool allow = millis() >= transientRefractoryUntil;
-
-      if (allow && rms > playThreshold) {
-        freq = yin_getPitch(audioBuffer, BUFFER_SIZE, SAMPLE_RATE, threshold);
-      }
-
-      if (allow && rms > playThreshold && freq >= minFreq && freq <= maxFreq) {
-        Serial.print("Estimated Frequency: ");
-        Serial.print(freq, 2);
-        Serial.println(" Hz");
-      }
-
-      prevRms = rms;
-      bufferIndex = 0;
-    }
+  float freq = yin_getPitch(audioBuffer, BUFFER_SIZE, SAMPLE_RATE, threshold);
+  if (freq >= minFreq && freq <= maxFreq) {
+    Serial.print("Estimated Frequency: ");
+    Serial.print(freq, 2);
+    Serial.println(" Hz");
   }
 }
 
