@@ -1,8 +1,18 @@
 #include "yin.h"
 #include <math.h>
 
-static float yinBufferInternal[BUFFER_SIZE / 2]; // BUFFER_SIZE defined in firmware. But not accessible here.
+static YinConfig g_config = {
+    .gpioPin = -1,
+    .sampleRate = YIN_DEFAULT_SAMPLE_RATE,
+    .threshold = YIN_DEFAULT_THRESHOLD,
+    .bufferSize = YIN_DEFAULT_BUFFER_SIZE
+};
 
+int yin_init(const YinConfig *config) {
+    if (!config) return -1;
+    g_config = *config;
+    return 0;
+}
 
 float yin_getPitch(const float *buffer, int bufferSize, int sampleRate, float threshold) {
     float yinBuffer[bufferSize / 2];
@@ -41,4 +51,9 @@ float yin_getPitch(const float *buffer, int bufferSize, int sampleRate, float th
         }
     }
     return 0.0f;
+}
+
+/* Convenience wrapper that uses the global configuration set by yin_init */
+float yin_compute_pitch(const float *buffer, size_t bufferSize) {
+    return yin_getPitch(buffer, (int)bufferSize, g_config.sampleRate, g_config.threshold);
 }
